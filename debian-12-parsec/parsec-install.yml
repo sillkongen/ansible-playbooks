@@ -1,0 +1,92 @@
+---
+- name: Install Parsec on Debian 12
+  hosts: localhost
+  connection: local
+  become: yes
+  tasks:
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Remove any existing Parsec installation
+      apt:
+        name: parsec
+        state: absent
+        purge: yes
+      ignore_errors: yes
+
+    - name: Remove any old Parsec files
+      file:
+        path: "/opt/parsec"
+        state: absent
+
+    - name: Install equivs for creating fake packages
+      apt:
+        name: equivs
+        state: present
+        update_cache: no
+
+    - name: Create equivs control file for libjpeg8
+      copy:
+        dest: "/tmp/libjpeg8-control"
+        content: |
+          Section: misc
+          Priority: optional
+          Standards-Version: 3.9.2
+          Package: libjpeg8
+          Version: 8.0
+          Maintainer: Fake Package <fake@debian.org>
+          Architecture: amd64
+          Description: Fake libjpeg8 package to satisfy dependencies
+          Provides: libjpeg8
+          Conflicts: libjpeg8
+
+    - name: Build the fake libjpeg8 package
+      command: equivs-build /tmp/libjpeg8-control
+      args:
+        chdir: /tmp
+      register: equivs_build
+      ignore_errors: no
+
+    - name: Find the generated libjpeg8 package
+      find:
+        paths: "/tmp/"
+        patterns: "libjpeg8_8.0_*.deb"
+      register: found_package
+
+    - name: Install the fake libjpeg8 package
+      command: dpkg -i {{ found_package.files[0].path }}
+      register: dpkg_fake_libjpeg8
+      ignore_errors: no
+
+    - name: Create symlink for missing libjpeg8
+      file:
+        src: "/usr/lib/x86_64-linux-gnu/libjpeg.so.62"
+        dest: "/usr/lib/x86_64-linux-gnu/libjpeg.so.8"
+        state: link
+      ignore_errors: yes
+
+    - name: Download Parsec Debian package
+      get_url:
+        url: "https://builds.parsecgaming.com/package/parsec-linux.deb"
+        dest: "/tmp/parsec-linux.deb"
+
+    - name: Install Parsec package
+      command: dpkg -i /tmp/parsec-linux.deb
+      register: dpkg_parsec
+      ignore_errors: no
+
+    - name: Find Parsec binary
+      stat:
+        path: "/usr/bin/parsecd"
+      register: parsecd_stat
+
+    - name: Fail if Parsec binary is missing
+      fail:
+        msg: "Parsec installation failed! /usr/bin/parsecd was not found."
+      when: not parsecd_stat.stat.exists
+
+    - name: Display Parsec installation result
+      debug:
+        msg: "Parsec installed successfully! Binary found at /usr/bin/parsecd"
