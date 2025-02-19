@@ -1,0 +1,40 @@
+---
+- name: Install Datadog Agent on Ubuntu 22.04
+  hosts: localhost
+  connection: local
+  become: yes
+  tasks:
+    - name: Ensure apt-transport-https and curl are installed
+      apt:
+        name: 
+          - apt-transport-https
+          - curl
+        state: present
+        update_cache: yes
+
+    - name: Add Datadog GPG signing key
+      ansible.builtin.shell: |
+        curl -fsSL https://keys.datadoghq.com/DATADOG_APT_KEY_CURRENT.public | sudo tee /usr/share/keyrings/datadog-archive-keyring.gpg > /dev/null
+      args:
+        creates: /usr/share/keyrings/datadog-archive-keyring.gpg
+
+    - name: Add Datadog APT repository
+      ansible.builtin.shell: |
+        echo "deb [signed-by=/usr/share/keyrings/datadog-archive-keyring.gpg] https://apt.datadoghq.com/ stable 7" | sudo tee /etc/apt/sources.list.d/datadog.list
+      args:
+        creates: /etc/apt/sources.list.d/datadog.list
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install Datadog Agent
+      apt:
+        name: datadog-agent
+        state: present
+
+    - name: Ensure Datadog Agent service is enabled and running
+      systemd:
+        name: datadog-agent
+        enabled: yes
+        state: started
